@@ -1,0 +1,13 @@
+{
+  "name": "petezah-next-password-bot-web",
+  "version": "1.0.0",
+  "description": "Web interface for PeteZah-Next-Password-Bot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["discord", "bot", "password", "web", "interface"],
+  "author": "PeteZah-Games",
+  "license": "MIT"
+}

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeteZah-Next-Password-Bot</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #36393f;
+            color: #dcddde;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .container {
+            text-align: center;
+            background-color: #2f3136;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #5865f2;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #5865f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #4752c4;
+        }
+        button:disabled {
+            background-color: #40444b;
+            cursor: not-allowed;
+        }
+        .response {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #dcddde;
+        }
+        .error {
+            color: #f04747;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PeteZah-Next-Password-Bot</h1>
+        <p>Click the button to get the latest password.</p>
+        <button id="password-btn" onclick="getPassword()">Get Password</button>
+        <div id="response" class="response"></div>
+    </div>
+    <script>
+        // Upstash Redis REST API credentials - Replace with your actual values
+        const UPSTASH_URL = 'YOUR_UPSTASH_REDIS_REST_URL'; // e.g., https://your-redis.upstash.io
+        const UPSTASH_TOKEN = 'YOUR_UPSTASH_REDIS_REST_TOKEN';
+
+        function getMonthKey(offset = 0) {
+            const now = new Date();
+            const target = new Date(
+                Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset)
+            );
+            return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}`;
+        }
+
+        const pr = new Intl.PluralRules("en-US", { type: "ordinal" });
+        const suffixes = new Map([
+            ["one", "st"],
+            ["two", "nd"],
+            ["few", "rd"],
+            ["other", "th"],
+        ]);
+
+        const formatOrdinals = (n) => {
+            const rule = pr.select(n);
+            const suffix = suffixes.get(rule);
+            return `${n}${suffix}`;
+        };
+
+        async function redisGet(key) {
+            const response = await fetch(`${UPSTASH_URL}/get/${key}`, {
+                headers: {
+                    'Authorization': `Bearer ${UPSTASH_TOKEN}`
+                }
+            });
+            const data = await response.json();
+            return data.result;
+        }
+
+        async function redisIncr(key) {
+            const response = await fetch(`${UPSTASH_URL}/incr/${key}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${UPSTASH_TOKEN}`
+                }
+            });
+            const data = await response.json();
+            return data.result;
+        }
+
+        async function redisMget(keys) {
+            const response = await fetch(`${UPSTASH_URL}/mget/${keys.join('/')}`, {
+                headers: {
+                    'Authorization': `Bearer ${UPSTASH_TOKEN}`
+                }
+            });
+            const data = await response.json();
+            return data.result;
+        }
+
+        async function getPasswordPrioritized() {
+            const nextMonthKey = `password:${getMonthKey(1)}`;
+            const currentMonthKey = `password:${getMonthKey(0)}`;
+
+            const [nextMonthPassword, currentMonthPassword] = await redisMget([nextMonthKey, currentMonthKey]);
+            const pwdRedCount = await redisIncr("pwdRedCount");
+
+            if (nextMonthPassword) return { pwd: nextMonthPassword, ct: pwdRedCount };
+            if (currentMonthPassword) return { pwd: currentMonthPassword, ct: pwdRedCount };
+
+            return null;
+        }
+
+        async function getPassword() {
+            const btn = document.getElementById('password-btn');
+            const responseDiv = document.getElementById('response');
+
+            btn.disabled = true;
+            btn.textContent = 'Fetching...';
+            responseDiv.textContent = '';
+
+            try {
+                const result = await getPasswordPrioritized();
+
+                if (!result) {
+                    responseDiv.textContent = 'No passwords found in Redis.';
+                    responseDiv.className = 'response error';
+                } else {
+                    responseDiv.textContent = `The latest password is: **${result.pwd}**, this is the **${formatOrdinals(result.ct)}** time someone has requested it.`;
+                    responseDiv.className = 'response';
+                }
+            } catch (error) {
+                responseDiv.textContent = 'Error fetching password. Check console for details.';
+                responseDiv.className = 'response error';
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Get Password';
+            }
+        }
+    </script>
+</body>
+</html>
